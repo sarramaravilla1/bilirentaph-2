@@ -13,6 +13,9 @@ export function AccountPanel({userId,onClose,onUpdated,onMessage}:Props){
   const [email,setEmail]=useState('');
   const [password,setPassword]=useState('');
   const [register,setRegister]=useState(false);
+  const [authView,setAuthView]=useState<'login'|'forgot'|'reset'>('login');
+  const [newPassword,setNewPassword]=useState('');
+  const [confirmPassword,setConfirmPassword]=useState('');
   const [busy,setBusy]=useState(false);
   const [mine,setMine]=useState<MyListing[]>([]);
   const [form,setForm]=useState(emptyForm);
@@ -33,6 +36,48 @@ export function AccountPanel({userId,onClose,onUpdated,onMessage}:Props){
     if(!supabase||!userId)return;
     const {data,error}=await supabase.from('properties').select('id,title,status').eq('owner_id',userId).order('created_at',{ascending:false});
     if(error)onMessage(error.message);else setMine(data||[]);
+  };
+
+  useEffect(()=>{
+    if(!supabase)return;
+    const client=supabase;
+    // Recovery links create a temporary authenticated session.
+    const {data:{subscription}}=client.auth.onAuthStateChange(event=>{
+      if(event==='PASSWORD_RECOVERY')setAuthView('reset');
+    });
+    // Handle recovery redirects even if the component mounts after the event.
+    if(typeof window!=='undefined' && (window.location.hash.includes('type=recovery') || window.location.search.includes('type=recovery'))){
+      setAuthView('reset');
+    }
+    return()=>subscription.unsubscribe();
+  },[]);
+
+  const requestPasswordReset=async(e:FormEvent<HTMLFormElement>)=>{
+    e.preventDefault();
+    if(!supabase)return;
+    setBusy(true);
+    try{
+      const redirectTo=`${window.location.origin}/?password_reset=1`;
+      const {error}=await supabase.auth.resetPasswordForEmail(email.trim(),{redirectTo});
+      onMessage(error?error.message:'If this email is registered, you will receive a password reset link. Check your inbox and spam folder.');
+    }catch(err){onMessage(err instanceof Error?err.message:'Could not request password reset.');}
+    finally{setBusy(false);}
+  };
+
+  const updatePassword=async(e:FormEvent<HTMLFormElement>)=>{
+    e.preventDefault();
+    if(!supabase)return;
+    if(newPassword.length<8){onMessage('Use a password with at least 8 characters.');return;}
+    if(newPassword!==confirmPassword){onMessage('Passwords do not match.');return;}
+    setBusy(true);
+    try{
+      const {error}=await supabase.auth.updateUser({password:newPassword});
+      if(error){onMessage(error.message);return;}
+      onMessage('Your password has been updated successfully.');
+      setNewPassword('');setConfirmPassword('');setAuthView('login');
+      window.history.replaceState({},'',window.location.pathname);
+    }catch(err){onMessage(err instanceof Error?err.message:'Could not update password.');}
+    finally{setBusy(false);}
   };
 
   const authenticate=async(e:FormEvent<HTMLFormElement>)=>{
@@ -94,13 +139,28 @@ export function AccountPanel({userId,onClose,onUpdated,onMessage}:Props){
       <div className="modal-body">
         <h2>{userId?'My account & listings':'Welcome to BiliRentaPH'}</h2>
         {!configured?<p>Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to Vercel environment variables.</p>
-        :!userId?<>
+        :authView==='reset'?<>
+          <p>Choose a new password for your BiliRentaPH account.</p>
+          <form className="account-form" onSubmit={updatePassword}>
+            <label>New password<input type="password" autoComplete="new-password" minLength={8} required value={newPassword} onChange={e=>setNewPassword(e.target.value)}/></label>
+            <label>Confirm new password<input type="password" autoComplete="new-password" minLength={8} required value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)}/></label>
+            <button className="primary-action" disabled={busy}>{busy?'Updating…':'Save new password'}</button>
+          </form>
+        </>:!userId?authView==='forgot'?<>
+          <p>Enter your registered email address. We’ll send you a password reset link.</p>
+          <form className="account-form" onSubmit={requestPasswordReset}>
+            <label>Email<input type="email" autoComplete="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label>
+            <button className="primary-action" disabled={busy}>{busy?'Sending…':'Send password reset link'}</button>
+          </form>
+          <button type="button" className="text-action" onClick={()=>setAuthView('login')}>Back to sign in</button>
+        </>:<>
           <p>Sign in to save listings or submit a property.</p>
           <form className="account-form" onSubmit={authenticate}>
             <label>Email<input type="email" autoComplete="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label>
             <label>Password<input type="password" minLength={6} autoComplete={register?'new-password':'current-password'} required value={password} onChange={e=>setPassword(e.target.value)}/></label>
             <button className="primary-action" disabled={busy}>{busy?'Please wait…':register?'Create account':'Sign in'}</button>
           </form>
+          {!register&&<button type="button" className="text-action" onClick={()=>setAuthView('forgot')}>Forgot password?</button>}
           <button type="button" className="text-action" onClick={()=>setRegister(!register)}>{register?'Already registered? Sign in':'New here? Create an account'}</button>
         </>:<>
           <p>Your listings will be reviewed before appearing on the public map.</p>
