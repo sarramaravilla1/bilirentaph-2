@@ -19,7 +19,13 @@ export function AccountPanel({userId,onClose,onUpdated,onMessage}:Props){
   const [busy,setBusy]=useState(false);
   const [mine,setMine]=useState<MyListing[]>([]);
   const [form,setForm]=useState(emptyForm);
-  const [photo,setPhoto]=useState<File|null>(null);
+  const [photos,setPhotos]=useState<File[]>([]);
+  const [photoPreviews,setPhotoPreviews]=useState<string[]>([]);
+  useEffect(()=>{
+    const urls=photos.map(file=>URL.createObjectURL(file));
+    setPhotoPreviews(urls);
+    return()=>urls.forEach(url=>URL.revokeObjectURL(url));
+  },[photos]);
 
   useEffect(()=>{
     let cancelled=false;
@@ -101,33 +107,38 @@ export function AccountPanel({userId,onClose,onUpdated,onMessage}:Props){
     if(!form.lat||!form.lng||!Number.isFinite(latitude)||!Number.isFinite(longitude)||latitude<4||latitude>22||longitude<116||longitude>127){
       onMessage('Please select an approximate location within the Philippines on the map.');return;
     }
-    if(photo&&(!['image/jpeg','image/png','image/webp'].includes(photo.type)||photo.size>5*1024*1024)){
-      onMessage('Property photo must be JPEG, PNG, or WebP and no larger than 5 MB.');return;
+    if(photos.length>10){onMessage('Choose no more than 10 photos.');return;}
+    if(photos.some(file=>!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>5*1024*1024)){
+      onMessage('Each photo must be JPEG, PNG, or WebP and no larger than 5 MB.');return;
     }
     setBusy(true);
     try{
-      let image_url:string|null=null;
-      let uploadedPath:string|null=null;
-      if(photo){
-        const ext=photo.type==='image/png'?'png':photo.type==='image/webp'?'webp':'jpg';
+      const uploadedPaths:string[]=[];
+      const photo_urls:string[]=[];
+      for(const file of photos){
+        const ext=file.type==='image/png'?'png':file.type==='image/webp'?'webp':'jpg';
         const path=`${userId}/${crypto.randomUUID()}.${ext}`;
-        const uploaded=await supabase.storage.from('property-photos').upload(path,photo,{contentType:photo.type});
-        if(uploaded.error){onMessage(uploaded.error.message);return;}
-        uploadedPath=path;
-        image_url=supabase.storage.from('property-photos').getPublicUrl(path).data.publicUrl;
+        const uploaded=await supabase.storage.from('property-photos').upload(path,file,{contentType:file.type});
+        if(uploaded.error){
+          if(uploadedPaths.length)await supabase.storage.from('property-photos').remove(uploadedPaths);
+          onMessage(`Photo upload failed: ${uploaded.error.message}`);return;
+        }
+        uploadedPaths.push(path);
+        photo_urls.push(supabase.storage.from('property-photos').getPublicUrl(path).data.publicUrl);
       }
+      const image_url=photo_urls[0]??null;
       const {error}=await supabase.from('properties').insert({
         owner_id:userId,title:form.title.trim(),city:form.city.trim(),price:Number(form.price),
         mode:form.mode,type:form.type,beds:Number(form.beds),baths:Number(form.baths),
         area:Number(form.area),lat:latitude,lng:longitude,
-        description:form.description.trim(),image_url,status:'pending'
+        description:form.description.trim(),image_url,photo_urls,status:'pending'
       });
       if(error){
-        if(uploadedPath)await supabase.storage.from('property-photos').remove([uploadedPath]);
+        if(uploadedPaths.length)await supabase.storage.from('property-photos').remove(uploadedPaths);
         onMessage(error.message);return;
       }
       onMessage('Listing submitted for review. It will not be public until approved.');
-      setForm(emptyForm());setPhoto(null);
+      setForm(emptyForm());setPhotos([]);
       await loadMine();onUpdated();
     }catch(err){onMessage(err instanceof Error?err.message:'Could not submit property.');}
     finally{setBusy(false);}
@@ -179,7 +190,15 @@ export function AccountPanel({userId,onClose,onUpdated,onMessage}:Props){
             <h4>Property location</h4>
             <LocationPicker lat={form.lat} lng={form.lng} onChange={(lat,lng)=>setForm(previous=>({...previous,lat,lng}))}/>
             <label>Description<textarea rows={3} maxLength={2000} value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></label>
-            <label>Property photo (optional, up to 5 MB)<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>setPhoto(e.target.files?.[0]||null)}/></label>
+            <label>Property photos (up to 10, 5 MB each)<input type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={e=>{const chosen=Array.from(e.target.files||[]);if(chosen.length>10){onMessage('Please select no more than 10 photos.');e.target.value='';return;}setPhotos(chosen);}}/></label>
+            {photos.length>0&&<><p className="form-hint">{photos.length} photo(s) selected. The first photo will be the cover photo.</p>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(105px,1fr))',gap:10}}>
+                {photoPreviews.map((url,i)=><div key={url} style={{position:'relative'}}>
+                  <img src={url} alt={`Selected property photo ${i+1}`} style={{width:'100%',height:90,objectFit:'cover',borderRadius:8}}/>
+                  <small>{i===0?'Cover':`Photo ${i+1}`}</small>
+                </div>)}
+              </div>
+            </>}
             <button className="primary-action" disabled={busy}>{busy?'Submitting…':'Submit for review'}</button>
           </form>
           <h3>My listings</h3>
