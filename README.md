@@ -1,24 +1,35 @@
-# BiliRentaPH 2.0 — Step 1 Starter
+# BiliRentaPH 2.1 — Map-first preview
 
-A responsive React + TypeScript frontend prototype. **All six listings are fictional demo data.** Search, buy/rent filtering, type filtering, maximum price filtering, detail modal, and in-session favorites work. No real map, accounts, database, owner contact, or listing submission is implemented yet.
+A React + TypeScript + Vite property discovery prototype with MapLibre GL JS.
 
 ## Run locally
 
-1. Install Node.js 20.19+ or 22.12+.
-2. In this folder, run `npm install`.
-3. Run `npm run dev` and open the local URL shown.
-4. Run `npm run build` to produce the `dist/` folder.
+```bash
+npm install
+npm run dev
+```
 
-## Deploy
+## Deploy to Vercel
 
-Create a GitHub repository, commit this project (not `node_modules` or `dist`), and import the repository in Netlify. Set build command `npm run build` and publish directory `dist`. You can also deploy the `dist/` folder manually after building.
+Push these files to the root of your existing GitHub repository. Vercel should automatically rebuild the project. Build command: `npm run build`; output: `dist`.
 
-## Next steps
+## What works
 
-1. Add Supabase and PostGIS, with Row Level Security and private credentials kept server-side.
-2. Replace demo listings with verified data.
-3. Add MapLibre GL JS with a licensed basemap provider.
-4. Add sign-up/login, listing submission, image upload, and moderation.
-5. Add accessibility, performance, privacy, and abuse tests.
+- Split-screen property cards and map (mobile list/map toggle)
+- Clickable map price markers and synchronized selection
+- Buy/rent, property type, maximum price, and text search filters
+- Property detail modal and in-session favorites
+- Six fictional demo listings
 
-Do not publish demo properties as real listings. Photos load from Unsplash URLs and are only temporary visual placeholders; verify image licensing for production use.
+## Important limitations
+
+- **Map coordinates are approximate city centers, not actual listing addresses.**
+- Sample listing photos are externally hosted; listings are fictional.
+- Favorites are temporary and reset on refresh.
+- No login, database, property submissions, verified hazard layers, or live inquiries.
+- Map uses the public OpenStreetMap raster tile service for **small-scale development only**. Before production, configure a commercial/hosted tile provider and follow its usage and attribution requirements.
+- MapLibre and the map tiles require internet access.
+
+## Next phase
+
+Supabase/PostGIS, real listing workflows, moderation, and secure user accounts.
